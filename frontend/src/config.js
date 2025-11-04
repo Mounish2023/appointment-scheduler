@@ -7,4 +7,6 @@ export const API_CONFIG = {
 export const API_ENDPOINTS = {
   START_SESSION: (userId) => `${API_CONFIG.BASE_URL}/session/start?userid=${userId}`,
   SEND_MESSAGE: (userId, sessionId) => `${API_CONFIG.BASE_URL}/session/${sessionId}/message?userid=${userId}`,
+  GET_ALL_SESSIONS: (userId) => `${API_CONFIG.BASE_URL}/sessions?userid=${userId}`,
+  GET_SESSION_MESSAGES: (userId, sessionId) => `${API_CONFIG.BASE_URL}/sessions/${sessionId}/messages?userid=${userId}`,
 };

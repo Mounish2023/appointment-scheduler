@@ -1,12 +1,13 @@
 # # backend/app/routes/chat_routes.py (Updated with AI Agent Integration)
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from ..agents.scheduler_agent.graph import create_dental_appointment_agent
 import uuid
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from datetime import datetime
 from ..services.conversation_service import ConversationManager
 from pydantic import BaseModel
+from typing import List, Optional
 from uuid import UUID
 from langchain.schema import AIMessage, HumanMessage
 
@@ -118,5 +119,44 @@ async def send_message(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error processing your request: {str(e)}"
+        )
+
+
+@router.get("/sessions", response_model=List[SessionResponse])
+async def get_all_sessions(userid: UUID):
+    """
+    Get all chat sessions for the specified user.
+    """
+    try:
+        sessions = await conversation_manager.get_all_sessions(userid=str(userid))
+        return sessions
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving sessions: {str(e)}"
+        )
+
+
+@router.get("/sessions/{session_id}/messages", response_model=List[MessageResponse])
+async def get_session_messages(session_id: UUID, userid: UUID):
+    """
+    Get all messages for a specific session.
+    """
+    try:
+        messages = await conversation_manager.get_session_conversations(
+            userid=str(userid), sessionid=str(session_id)
+        )
+        if not messages:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found or no messages available"
+            )
+        return messages
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving messages: {str(e)}"
         )
 

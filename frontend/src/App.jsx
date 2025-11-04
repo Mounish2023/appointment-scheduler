@@ -7,6 +7,8 @@ function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const messagesEndRef = useRef(null);
 
   // Function to convert markdown-style formatting to HTML
@@ -23,6 +25,84 @@ function App() {
     formatted = formatted.replace(/\n/g, '<br>');
     
     return formatted;
+  };
+
+  // Load all sessions on component mount
+  useEffect(() => {
+    loadAllSessions();
+  }, []);
+
+  const loadAllSessions = async () => {
+    setIsLoadingSessions(true);
+    try {
+      const response = await fetch(API_ENDPOINTS.GET_ALL_SESSIONS(API_CONFIG.USER_ID));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const sessions = await response.json();
+      
+      // Transform sessions into the format we need
+      const transformedSessions = sessions.map(session => ({
+        id: session.sessionid,
+        title: session.title || `Chat ${session.sessionid.substring(0, 8)}...`,
+        messages: [], // Messages will be loaded when user clicks on the session
+        created_at: session.created_at
+      }));
+
+      setConversations(transformedSessions);
+    } catch (error) {
+      console.error('Error loading sessions:', error);
+      // Don't alert on initial load, just log the error
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  const loadSessionMessages = async (sessionId) => {
+    setIsLoadingMessages(true);
+    try {
+      const response = await fetch(
+        API_ENDPOINTS.GET_SESSION_MESSAGES(API_CONFIG.USER_ID, sessionId)
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const messages = await response.json();
+      
+      // Transform messages into our format
+      const transformedMessages = messages.flatMap(msg => [
+        {
+          id: `${msg.conversationid}-user`,
+          role: 'user',
+          content: msg.query,
+          timestamp: msg.created_at
+        },
+        {
+          id: `${msg.conversationid}-assistant`,
+          role: 'assistant',
+          content: msg.response,
+          timestamp: msg.updated_at
+        }
+      ]);
+
+      // Update the conversation with loaded messages
+      setConversations(prevConvos =>
+        prevConvos.map(chat =>
+          chat.id === sessionId
+            ? { ...chat, messages: transformedMessages }
+            : chat
+        )
+      );
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      alert(`Failed to load messages: ${error.message}`);
+    } finally {
+      setIsLoadingMessages(false);
+    }
   };
 
   const scrollToBottom = () => {
@@ -68,7 +148,7 @@ function App() {
       // Create new chat with the session data
       const newChat = {
         id: sessionData.sessionid,
-        title: query.length > 30 ? query.substring(0, 30) + '...' : query,
+        title: sessionData.title || query.substring(0, 30) + (query.length > 30 ? '...' : ''),
         messages: sessionData.conversations.map(conv => [
           {
             id: `${conv.conversationid}-user`,
@@ -82,7 +162,8 @@ function App() {
             content: conv.response,
             timestamp: conv.updated_at
           }
-        ]).flat()
+        ]).flat(),
+        created_at: sessionData.created_at
       };
 
       setConversations([...conversations, newChat]);
@@ -97,8 +178,14 @@ function App() {
     }
   };
 
-  const handleSwitchChat = (chatId) => {
+  const handleSwitchChat = async (chatId) => {
     setCurrentChatId(chatId);
+    
+    // Load messages for this session if not already loaded
+    const chat = conversations.find(c => c.id === chatId);
+    if (chat && chat.messages.length === 0) {
+      await loadSessionMessages(chatId);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -237,15 +324,25 @@ function App() {
           + New Chat
         </button>
         <div className="chat-list">
-          {conversations.map(chat => (
-            <div
-              key={chat.id}
-              className={`chat-item ${chat.id === currentChatId ? 'active' : ''}`}
-              onClick={() => handleSwitchChat(chat.id)}
-            >
-              {chat.title}
+          {isLoadingSessions ? (
+            <div className="loading-sessions">
+              <p>Loading sessions...</p>
             </div>
-          ))}
+          ) : conversations.length === 0 ? (
+            <div className="no-sessions">
+              <p>No chats yet. Start a new one!</p>
+            </div>
+          ) : (
+            conversations.map(chat => (
+              <div
+                key={chat.id}
+                className={`chat-item ${chat.id === currentChatId ? 'active' : ''}`}
+                onClick={() => handleSwitchChat(chat.id)}
+              >
+                {chat.title}
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -255,12 +352,17 @@ function App() {
         </div>
 
         <div className="chat-window">
-          {(!currentChat || currentChat.messages.length === 0) && !isLoading && (
+          {isLoadingMessages && (
+            <div className="loading-container">
+              <p>Loading messages...</p>
+            </div>
+          )}
+          {!isLoadingMessages && (!currentChat || currentChat.messages.length === 0) && !isLoading && (
             <div className="empty-state">
               <p>Start a conversation by typing a message below and clicking "New Chat" or "Send".</p>
             </div>
           )}
-          {currentChat && currentChat.messages.map(message => (
+          {!isLoadingMessages && currentChat && currentChat.messages.map(message => (
             <div
               key={message.id}
               className={`message-container ${message.role}`}

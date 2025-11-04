@@ -402,3 +402,18 @@ body {
 .chat-list::-webkit-scrollbar-thumb:hover {
   background: #a0a0a0;
 }
+
+/* Loading States */
+.loading-container,
+.loading-sessions,
+.no-sessions {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+  font-size: 15px;
+}
+
+.loading-sessions,
+.no-sessions {
+  margin-top: 20px;
+}
