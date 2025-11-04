@@ -119,3 +119,4 @@ async def send_message(
         raise HTTPException(
             status_code=500, detail=f"Error processing your request: {str(e)}"
         )
+
