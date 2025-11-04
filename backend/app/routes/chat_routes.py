@@ -1,0 +1,121 @@
+# # backend/app/routes/chat_routes.py (Updated with AI Agent Integration)
+
+from fastapi import APIRouter
+from ..agents.scheduler_agent.graph import create_dental_appointment_agent
+import uuid
+from fastapi import HTTPException
+from datetime import datetime
+from ..services.conversation_service import ConversationManager
+from pydantic import BaseModel
+from uuid import UUID
+from langchain.schema import AIMessage, HumanMessage
+
+
+
+router = APIRouter()
+conversation_manager = ConversationManager()
+
+
+# Pydantic models
+class MessageCreate(BaseModel):
+    query: str
+
+
+class MessageResponse(BaseModel):
+    conversationid: str
+    query: str
+    response: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SessionCreate(BaseModel):
+    query: str
+
+
+class SessionResponse(BaseModel):
+    sessionid: str
+    userid: str
+    conversations: list[MessageResponse]
+    created_at: datetime
+    updated_at: datetime  # For ChatGPT-style session titles
+
+    class Config:
+        from_attributes = True
+
+
+@router.post("/session/start", response_model=SessionResponse)
+async def start_chat_session(userid: UUID, session_details: SessionCreate):
+    """Start a new chat session and send initial greeting."""
+    try:
+        # Generate a unique thread ID for this conversation
+        sessionid = str(uuid.uuid4())
+
+        # Prepare the input with messages and config
+        input_data = {"messages": [{"role": "user", "content": session_details.query}]}
+
+        # Initialize and invoke the agent
+        agent = await create_dental_appointment_agent()
+        result = await agent.ainvoke(input_data)
+
+        print(result)
+        response_content = result["messages"][-1].content
+        print(response_content)
+        # Save the conversation to MongoDB
+        session = await conversation_manager.add_session_conversation(
+            userid=str(userid),
+            sessionid=sessionid,
+            query=session_details.query,
+            response=response_content
+        )
+        # Return the response with thread_id for future interactions
+        return session
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error processing your request: {str(e)}"
+        )
+
+
+@router.post("/session/{session_id}/message", response_model=MessageResponse)
+async def send_message(
+    session_id: UUID,
+    message_data: MessageCreate,
+    userid: UUID,
+):
+    """Send a message and trigger AI agent processing."""
+    try:
+        # Prepare the input with messages and config
+        session_details = await conversation_manager.get_session_conversations(
+            userid=str(userid), sessionid=str(session_id)
+        )
+        chat_history = []
+        for conv in session_details:
+            chat_history.append({"role": "user", "content": conv.query})
+            chat_history.append({"role": "assistant", "content": conv.response})
+        input_data = {
+            "messages": chat_history + [{"role": "user", "content": message_data.query}]
+        }
+
+        # Initialize and invoke the agent
+        agent = await create_dental_appointment_agent()
+        result = await agent.ainvoke(input_data)
+        print(result)
+        response_content = result["messages"][-1].content
+
+        # Save the conversation to MongoDB
+        conversation = await conversation_manager.add_conversation(
+            userid=str(userid),
+            sessionid=str(session_id),
+            query=message_data.query,
+            response=response_content,
+        )
+
+        # Return the response with thread_id for future interactions
+        return conversation
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error processing your request: {str(e)}"
+        )

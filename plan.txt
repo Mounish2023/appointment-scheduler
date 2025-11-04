@@ -1,0 +1,6 @@
+Features:
+1. Who are the service providers?
+2. what services are provided?
+3. what services are provided by whom?
+
+learn how to do database migrations, schema changes, 

@@ -1,0 +1,29 @@
+# backend/requirements.txt (Updated)
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+alembic
+# python-jose[cryptography]==3.3.0
+# passlib[bcrypt]==1.7.4
+# python-multipart==0.0.6
+# loguru==0.7.2
+# python-dotenv==1.0.0
+
+pydantic
+pydantic-settings
+psycopg2-binary
+
+# LangGraph and LangChain dependencies
+langgraph
+langchain
+langchain-openai
+langchain-core
+langchain-community
+openai
+
+# Additional dependencies for SQL and data processing
+pandas
+numpy
+pymongo
+motor
