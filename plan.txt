@@ -1,5 +1,9 @@
 Features:
-1. Who are the service providers?
+1. Who are the service providers?/ who are the doctors?/ who are the dentists?
+
+sample data is not the real data. sample data is meant to understand the schema of the database.
+
+
 2. what services are provided?
 3. what services are provided by whom?
 

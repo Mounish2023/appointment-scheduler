@@ -9,6 +9,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [drafts, setDrafts] = useState({}); // New: Store unsent input drafts per chat (including 'new' for new mode)
   const messagesEndRef = useRef(null);
 
   // Function to convert markdown-style formatting to HTML
@@ -32,6 +33,7 @@ function App() {
     loadAllSessions();
   }, []);
 
+  // Load all sessions in the chat interface
   const loadAllSessions = async () => {
     setIsLoadingSessions(true);
     try {
@@ -60,6 +62,7 @@ function App() {
     }
   };
 
+  // Load messages for a specific session
   const loadSessionMessages = async (sessionId) => {
     setIsLoadingMessages(true);
     try {
@@ -105,6 +108,7 @@ function App() {
     }
   };
 
+  // Scroll to the bottom of the chat window
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -113,121 +117,95 @@ function App() {
     scrollToBottom();
   }, [conversations, currentChatId]);
 
+  // Get the current chat (handle null as new chat mode)
   const getCurrentChat = () => {
+    if (currentChatId === null) {
+      return {
+        id: null,
+        title: 'New Chat',
+        messages: []
+      };
+    }
     return conversations.find(chat => chat.id === currentChatId);
   };
 
-  const handleNewChat = async () => {
+  // Handle selecting "new chat" mode (renamed from handleNewChat)
+  const handleSelectNew = () => {
+    if (currentChatId === null) {
+      return; // Already in new mode; do nothing to "remain same"
+    }
+
+    // Save draft of current chat
+    setDrafts(prev => ({ ...prev, [currentChatId]: input }));
+
+    // Switch to new mode
+    setCurrentChatId(null);
+    setInput(drafts['new'] || '');
+  };
+
+  // Handle sending a message
+  const handleSendMessage = async () => {
     const query = input.trim();
     if (!query) {
-      alert('Please enter a message to start a new chat');
+      alert('Please enter a message');
       return;
     }
 
     setIsLoading(true);
+    const currentChat = getCurrentChat();
+    const isNewChat = currentChat.messages.length === 0; // Simplified: new if no messages (covers null ID)
     const originalInput = input;
-
-    try {
-      // Call the start session endpoint
-      const response = await fetch(API_ENDPOINTS.START_SESSION(API_CONFIG.USER_ID), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: query
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const sessionData = await response.json();
-      
-      // Create new chat with the session data
-      const newChat = {
-        id: sessionData.sessionid,
-        title: sessionData.title || query.substring(0, 30) + (query.length > 30 ? '...' : ''),
-        messages: sessionData.conversations.map(conv => [
-          {
-            id: `${conv.conversationid}-user`,
-            role: 'user',
-            content: conv.query,
-            timestamp: conv.created_at
-          },
-          {
-            id: `${conv.conversationid}-assistant`,
-            role: 'assistant',
-            content: conv.response,
-            timestamp: conv.updated_at
-          }
-        ]).flat(),
-        created_at: sessionData.created_at
-      };
-
-      setConversations([...conversations, newChat]);
-      setCurrentChatId(newChat.id);
-      setInput(''); // Clear input only after success
-    } catch (error) {
-      console.error('Error starting new session:', error);
-      alert(`Failed to start new chat: ${error.message}`);
-      setInput(originalInput); // Restore input on error
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSwitchChat = async (chatId) => {
-    setCurrentChatId(chatId);
     
-    // Load messages for this session if not already loaded
-    const chat = conversations.find(c => c.id === chatId);
-    if (chat && chat.messages.length === 0) {
-      await loadSessionMessages(chatId);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    const query = input.trim();
-    if (!query) return;
-
-    const originalInput = input;
-
-    // If no chat is selected, create a new one
-    if (!currentChatId) {
-      await handleNewChat();
-      return;
-    }
+    // Add user message to the chat
     const userMessage = {
-      id: `temp-${Date.now()}`,
+      id: `user-${Date.now()}`,
       role: 'user',
       content: query,
       timestamp: new Date().toISOString()
     };
-
-    // Add user message immediately
-    setConversations(prevConvos => 
-      prevConvos.map(chat => 
-        chat.id === currentChatId 
-          ? { ...chat, messages: [...chat.messages, userMessage] }
-          : chat
-      )
-    );
-
-    setIsLoading(true);
+    
+    // Create a temporary ID for new chats
+    const tempId = isNewChat ? `temp-${Date.now()}` : currentChatId;
+    
+    // Update the chat with the user's message (local only for now)
+    const updatedChat = {
+      ...currentChat,
+      id: tempId,
+      messages: [...currentChat.messages, userMessage],
+      title: isNewChat ? (query.substring(0, 30) + (query.length > 30 ? '...' : '')) : currentChat.title
+    };
+    
+    // Update conversations immediately (for optimism)
+    setConversations(prev => {
+      if (isNewChat) {
+        // For new chats, add to the beginning of the list
+        return [updatedChat, ...prev];
+      } else {
+        // For existing chats, update in place
+        return prev.map(chat => chat.id === currentChatId ? updatedChat : chat);
+      }
+    });
+    
+    // If this is a new chat, update the current chat ID
+    if (isNewChat) {
+      setCurrentChatId(tempId);
+    }
+    setInput('');
 
     try {
-      // Call the send message endpoint
+      // Call the appropriate API endpoint based on whether it's a new chat or not
       const response = await fetch(
-        API_ENDPOINTS.SEND_MESSAGE(API_CONFIG.USER_ID, currentChatId),
+        isNewChat 
+          ? API_ENDPOINTS.START_SESSION(API_CONFIG.USER_ID)
+          : API_ENDPOINTS.SEND_MESSAGE(API_CONFIG.USER_ID, currentChatId),
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            query: query
+            query: query,
+            ...(isNewChat ? {} : { sessionid: currentChatId })
           })
         }
       );
@@ -236,70 +214,62 @@ function App() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const conversationData = await response.json();
-
-      // Replace temporary user message and add assistant response
-      setConversations(prevConvos => 
-        prevConvos.map(chat => {
-          if (chat.id === currentChatId) {
-            // Remove the temporary message and add the real ones
-            const messagesWithoutTemp = chat.messages.filter(
-              msg => msg.id !== userMessage.id
-            );
-            
-            return {
-              ...chat,
-              messages: [
-                ...messagesWithoutTemp,
-                {
-                  id: `${conversationData.conversationid}-user`,
-                  role: 'user',
-                  content: conversationData.query,
-                  timestamp: conversationData.created_at
-                },
-                {
-                  id: `${conversationData.conversationid}-assistant`,
-                  role: 'assistant',
-                  content: conversationData.response,
-                  timestamp: conversationData.updated_at
-                }
-              ]
-            };
-          }
-          return chat;
-        })
+      const responseData = await response.json();
+      
+      // Add assistant's response to the chat
+      const assistantMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: isNewChat ? responseData.conversations[0].response : responseData.response,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Update the chat with the assistant's response
+      const finalChat = {
+        ...(isNewChat ? { ...updatedChat, id: responseData.sessionid } : updatedChat),
+        messages: [...updatedChat.messages, assistantMessage]
+      };
+      
+      // Update conversations with the final chat state
+      setConversations(prev => 
+        isNewChat 
+          ? [finalChat, ...prev.filter(chat => chat.id !== tempId)]
+          : prev.map(chat => chat.id === currentChatId ? finalChat : chat)
       );
-      setInput(''); // Clear input only after success
+      
+      // Update currentChatId if this was a new chat
+      if (isNewChat) {
+        setCurrentChatId(responseData.sessionid);
+      }
+
+      // Clear draft after successful send
+      setDrafts(prev => {
+        const newDrafts = { ...prev };
+        delete newDrafts[isNewChat ? 'new' : currentChatId];
+        return newDrafts;
+      });
     } catch (error) {
       console.error('Error sending message:', error);
-      
-      // Remove the temporary message and show error
-      setConversations(prevConvos => 
-        prevConvos.map(chat => {
-          if (chat.id === currentChatId) {
-            const messagesWithoutTemp = chat.messages.filter(
-              msg => msg.id !== userMessage.id
-            );
-            
-            return {
-              ...chat,
-              messages: [
-                ...messagesWithoutTemp,
-                {
-                  id: `error-${Date.now()}`,
-                  role: 'assistant',
-                  content: `Error: Failed to send message. ${error.message}`,
-                  timestamp: new Date().toISOString()
-                }
-              ]
-            };
-          }
-          return chat;
-        })
-      );
+      alert(`Failed to send message: ${error.message}`);
       setInput(originalInput); // Restore input on error
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle switching to an existing chat
+  const handleSwitchChat = async (chatId) => {
+    // Save draft of previous (handle 'new' if current is null)
+    const prevId = currentChatId || 'new';
+    setDrafts(prev => ({ ...prev, [prevId]: input }));
+
+    setCurrentChatId(chatId);
+    setInput(drafts[chatId] || '');
+    
+    // Load messages for this session if not already loaded
+    const chat = conversations.find(c => c.id === chatId);
+    if (chat && chat.messages.length === 0) {
+      await loadSessionMessages(chatId);
     }
   };
 
@@ -317,8 +287,8 @@ function App() {
       <div className="sidebar">
         <button 
           className="new-chat-btn" 
-          onClick={handleNewChat} 
-          disabled={isLoading || !input.trim()}
+          onClick={handleSelectNew} 
+          disabled={isLoading}
           title={!input.trim() ? "Type a message first" : "Start a new chat"}
         >
           + New Chat
@@ -348,7 +318,7 @@ function App() {
 
       <div className="main-content">
         <div className="chat-header">
-          <h1>Grok Chat</h1>
+          <h1>Appointment Scheduler</h1>
         </div>
 
         <div className="chat-window">
@@ -359,7 +329,7 @@ function App() {
           )}
           {!isLoadingMessages && (!currentChat || currentChat.messages.length === 0) && !isLoading && (
             <div className="empty-state">
-              <p>Start a conversation by typing a message below and clicking "New Chat" or "Send".</p>
+              <p>Hello! Start a conversation by typing a message below and clicking "Send".</p>
             </div>
           )}
           {!isLoadingMessages && currentChat && currentChat.messages.map(message => (
@@ -407,7 +377,7 @@ function App() {
             onClick={handleSendMessage}
             disabled={!input.trim() || isLoading}
           >
-            {currentChatId ? 'Send' : 'Start Chat'}
+            {currentChatId ? 'Send' : 'Send'}
           </button>
         </div>
       </div>
