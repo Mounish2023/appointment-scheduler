@@ -112,7 +112,7 @@ class ServiceProvider(Base):
 
     # Relationships
     appointments = relationship("Appointment", back_populates="provider")
-    availability_rules = relationship("AvailabilityRule", back_populates="provider", cascade="all, delete-orphan")
+    base_availability_rules = relationship("BaseAvailabilityRule", back_populates="provider", cascade="all, delete-orphan")
     # relationship to association objects (ProviderService)
     provider_services = relationship(
         "ProviderService",
@@ -120,6 +120,7 @@ class ServiceProvider(Base):
         cascade="all, delete-orphan",
         lazy="joined"
     )
+    availability_exceptions = relationship("AvailabilityException", back_populates="provider", cascade="all, delete-orphan")
 
     # convenience many-to-many to Service (via the provider_services table)
     services = relationship(
@@ -310,11 +311,11 @@ class AppointmentException(Base):
 
 
 # ============================================
-# 7. AVAILABILITY RULES TABLE
+# Base Availability Table
 # ============================================
-class AvailabilityRule(Base):
-    """Defines when providers are available without creating individual events"""
-    __tablename__ = "availability_rules"
+class BaseAvailabilityRule(Base):
+    """Defines provider's base working hours per day of week"""
+    __tablename__ = "base_availability_rules"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider_id = Column(UUID(as_uuid=True), ForeignKey("service_providers.id"), nullable=False, index=True)
@@ -322,7 +323,7 @@ class AvailabilityRule(Base):
     # Day of week (1=Monday, 7=Sunday)
     day_of_week = Column(Integer, nullable=False)
 
-    # Daily availability window
+    # Daily working window
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
 
@@ -330,21 +331,45 @@ class AvailabilityRule(Base):
     effective_from = Column(Date, nullable=False)
     effective_until = Column(Date)  # Nullable for indefinite rules
 
-    # Timezone for this rule
+    # Timezone
     timezone = Column(String(50), default="America/Chicago", nullable=False)
 
-    # Availability flag (True=available, False=blocked)
-    is_available = Column(Boolean, default=True, nullable=False)
-
     # Additional information
-    notes = Column(Text)  # e.g., "Lunch break", "Staff meeting"
+    notes = Column(Text)  # e.g., "Regular working hours"
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    provider = relationship("ServiceProvider", back_populates="availability_rules")
+    provider = relationship("ServiceProvider", back_populates="base_availability_rules")
+
+# ============================================
+# Availability Exceptions Table
+# ============================================
+class AvailabilityException(Base):
+    """Defines intervals where provider is unavailable within base working hours"""
+    __tablename__ = "availability_exceptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider_id = Column(UUID(as_uuid=True), ForeignKey("service_providers.id"), nullable=False, index=True)
+
+    # Specific date of the exception
+    date = Column(Date, nullable=False)
+
+    # Blocked interval on that date
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+
+    # Reason for unavailability
+    reason = Column(String(255), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    provider = relationship("ServiceProvider", back_populates="availability_exceptions")
 
 class ProviderService(Base):
     """

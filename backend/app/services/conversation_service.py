@@ -56,10 +56,14 @@ class ConversationManager:
             updated_at=datetime.now(),
         )
 
+        # Generate title from first query (first 50 characters)
+        title = query[:50] + ("..." if len(query) > 50 else "")
+
         session = Session(
             sessionid=sessionid,
             userid=userid,
             conversations=[conversation],
+            title=title,
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
@@ -107,6 +111,7 @@ class ConversationManager:
                 sessionid=result["sessionid"],
                 userid=result["userid"],
                 conversations=conversations,
+                title=result.get("title"),  # Backwards compatible with existing sessions
                 created_at=result.get("created_at", datetime.now()),
                 updated_at=result.get("updated_at", datetime.now()),
             )

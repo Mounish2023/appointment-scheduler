@@ -1,18 +1,25 @@
-
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
-from sqlalchemy import text
+# from app.config import settings
+from sqlalchemy import text, inspect
+import re
 
 # ============================================
 # LOAD ENV VARIABLES
 # ============================================
-from langchain_community.utilities import SQLDatabase
-DATABASE_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/dental_appointment_db"
-db = SQLDatabase.from_uri(DATABASE_URL)
+# from langchain_community.utilities import SQLDatabase
+
+# DATABASE_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/dental_appointment_db"
+# db = SQLDatabase.from_uri(settings.DATABASE_URL)
+from app.database import get_db
+from app.database import engine 
+from app.agents.scheduler_agent.table_schemas import table_schemas
+
+db = get_db()
 
 # ============================================
 # TOOL DEFINITIONS
@@ -21,28 +28,99 @@ db = SQLDatabase.from_uri(DATABASE_URL)
 @tool
 async def get_database_schema(table_names: str = "") -> str:
     """
-    Get the schema for specified tables in the dental appointment database (async version).
-
-    Args:
-        table_names: Comma-separated list of table names (e.g., "users,appointments").
-                     Leave empty to get all available tables.
-
-    Returns:
-        Schema information including table structure and sample data.
+    Returns schema information from the predefined SQLAlchemy schema hashmap,
+    instead of querying the database.
     """
-    try:
-        database = db
 
-        if not table_names:
-            tables = database.get_usable_table_names()
-            return f"Available tables: {', '.join(tables)}"
+    # -------------------------------------------------------------------
+    # Static schema hashmap
+    # -------------------------------------------------------------------
+    SCHEMA = table_schemas
 
-        tables_list = [t.strip() for t in table_names.split(",")]
-        schema_info = database.get_table_info_no_throw(tables_list)
-        return schema_info
-    except Exception as e:
-        return f"Error fetching schema: {str(e)}"
+    # -------------------------------------------------------------------
+    # If no table names provided → return list of tables
+    # -------------------------------------------------------------------
+    if not table_names:
+        available = ", ".join(SCHEMA.keys())
+        return f"Available tables: {available}"
 
+    # -------------------------------------------------------------------
+    # Process requested tables
+    # -------------------------------------------------------------------
+    tables = [t.strip() for t in table_names.split(",")]
+    output = ""
+
+    for table in tables:
+        if table not in SCHEMA:
+            output += f"\n❌ Table '{table}' does not exist.\n"
+            continue
+
+        table_info = SCHEMA[table]
+        output += f"\n📌 Schema for `{table}`\n"
+        output += f"Description: {table_info['description']}\n"
+        output += "-" * 60 + "\n"
+        
+        for col in table_info['columns']:
+            output += f"• {col['name']}"
+            if col['is_primary_key']:
+                output += " (PK)"
+            if col['is_foreign_key']:
+                output += " (FK)"
+            output += f": {col['description']}"
+            if col.get('unique_values'):
+                output += f" (Unique values: {', '.join(str(v) for v in col['unique_values'])})"
+            output += "\n"
+        output += "\n"
+
+    return output
+
+@tool
+def planner(question: str) -> str:
+    """
+    Create a step-by-step execution plan for complex, multi-part questions.
+    This tool should only be used when the user's request requires multiple
+    separate operations or decisions to fully address.
+    
+    Args:
+        question: The user's question or request that needs planning
+        
+    Returns:
+        A structured, numbered plan with clear steps to address the request
+    """
+    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    
+    # Build schema context from the imported table_schemas
+    schema_context = ""
+    for table_name, table_info in table_schemas.items():
+        schema_context += f"\nTable: {table_name}\n"
+        schema_context += f"Description: {table_info['description']}\n"
+        for col in table_info['columns']:
+             schema_context += f"- {col['name']}: {col['description']}"
+             if col['use_cases']:
+                 schema_context += f" (Used for: {', '.join(col['use_cases'])})"
+             if col.get('unique_values'):
+                 schema_context += f" (Unique values: {', '.join(str(v) for v in col['unique_values'])})"
+             schema_context += "\n"
+    
+    prompt = f"""You are a dental appointment scheduling expert. Break down the following
+    complex request into clear, sequential steps.
+    
+    You have access to the following database schema:
+    {schema_context}
+    
+    Request: {question}
+    
+    Format your response as a numbered list of steps. Be concise but thorough.
+    Each step should be:
+    1. Specific and actionable
+    2. Include any necessary context or data requirements
+    3. Note any dependencies between steps
+    4. Consider appointment booking workflows and constraints
+    
+    If the request is simple and doesn't require planning, say so. The steps cannot be more than 3."""
+    
+    response = llm.invoke([HumanMessage(content=prompt)])
+    return response.content.strip()
 
 @tool
 def generate_sql_query(natural_language_question: str, schema_context: str) -> str:
@@ -52,7 +130,7 @@ def generate_sql_query(natural_language_question: str, schema_context: str) -> s
 
     Args:
         natural_language_question: The user's question in plain English
-        schema_context: Relevant database schema information
+        schema_context: Relevant database schema information, MUST include sample rows
 
     Returns:
         A SQL query string
@@ -61,21 +139,21 @@ def generate_sql_query(natural_language_question: str, schema_context: str) -> s
 
     prompt = f"""You are a SQL expert for a dental appointment booking system.
 
-Database Schema:
-{schema_context}
+                Database Schema:
+                {schema_context}
 
-User Question: {natural_language_question}
+                User Question: {natural_language_question}
 
-Important Guidelines:
-- Generate ONLY SELECT queries (no INSERT, UPDATE, DELETE, DROP)
-- Always use proper JOIN syntax when multiple tables are needed
-- Include relevant WHERE clauses to filter results
-- Use table aliases for readability
-- Limit results to a reasonable number (use LIMIT 10 unless user specifies)
-- For appointment times, remember they are stored in UTC
-- Return ONLY the SQL query, no explanation
+                Important Guidelines:
+                - Generate ONLY SELECT , UPDATE, INSERT queries (no DELETE, DROP, ALTER, CREATE, TRUNCATE)
+                - Always use proper JOIN syntax when multiple tables are needed
+                - Include relevant WHERE clauses to filter results
+                - Use table aliases for readability
+                - Limit results to a reasonable number (use LIMIT 10 unless user specifies)
+                - For appointment times, remember they are stored in UTC
+                - Return ONLY the SQL query, no explanation
 
-Generate the SQL query:"""
+                Generate the SQL query:"""
 
     response = llm.invoke([HumanMessage(content=prompt)])
     sql_query = response.content.strip()
@@ -102,19 +180,19 @@ def validate_sql_query(sql_query: str) -> str:
 
     prompt = f"""You are a SQL expert reviewing this query for correctness and safety.
 
-SQL Query:
-{sql_query}
+                SQL Query:
+                {sql_query}
 
-Check for:
-1. Security: Ensure no DML statements (INSERT, UPDATE, DELETE, DROP)
-2. Syntax: Check for SQL syntax errors
-3. Logic: Verify JOINs are correct, proper WHERE clauses
-4. Data types: Check for type mismatches
-5. Best practices: Proper use of LIMIT, correct column names
+                Check for:
+                1. Security: Ensure no DML statements (DELETE, DROP, ALTER, CREATE, TRUNCATE)
+                2. Syntax: Check for SQL syntax errors
+                3. Logic: Verify JOINs are correct, proper WHERE clauses
+                4. Data types: Check for type mismatches
+                5. Best practices: Proper use of LIMIT, correct column names
 
-If the query is valid, respond with only: VALID
+                If the query is valid, respond with only: VALID
 
-If there are issues, respond with: ERROR: [description of the issue]"""
+                If there are issues, respond with: ERROR: [description of the issue]"""
 
     response = llm.invoke([HumanMessage(content=prompt)])
     return response.content.strip()
@@ -135,20 +213,20 @@ def format_query_results(query_result: str, original_question: str) -> str:
     llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
     prompt = f"""You are a helpful dental office assistant. Convert the database query results 
-into a clear, natural language response.
+    into a clear, natural language response.
 
-User's Question: {original_question}
+                User's Question: {original_question}
 
-Query Results: {query_result}
+                Query Results: {query_result}
 
-Provide a friendly, conversational response that:
-- Directly answers the user's question
-- Is easy to understand (no technical jargon)
-- Formats information clearly (use bullet points if helpful)
-- Adds context where appropriate (e.g., "Dr. Smith specializes in...")
-- For appointment times, mention the timezone if relevant
+                Provide a friendly, conversational response that:
+                - Directly answers the user's question
+                - Is easy to understand (no technical jargon)
+                - Formats information clearly (use bullet points if helpful)
+                - Adds context where appropriate (e.g., "Dr. Smith specializes in...")
+                - For appointment times, mention the timezone if relevant
 
-Response:"""
+                Response:"""
 
     response = llm.invoke([HumanMessage(content=prompt)])
     return response.content.strip()
@@ -156,38 +234,82 @@ Response:"""
 
 
 #---------------------------------------------
-# READ OPERATION TOOLS (Safe and Controlled)
+# READ & WRITE OPERATION TOOLS (Safe and Controlled)
 #---------------------------------------------
 
 @tool
-def execute_sql_query(sql_query: str) -> str:
+async def execute_sql_query(sql_query: str) -> str:
     """
-    Execute a SQL query on the dental appointment database.
-    ONLY executes SELECT queries for safety.
+    Execute a SQL query on the PostgreSQL database using async SQLAlchemy.
+    ONLY executes SELECT, UPDATE, INSERT queries for safety.
 
     Args:
-        sql_query: The SQL query to execute
+        sql_query: The SQL query to execute.
 
     Returns:
-        Query results as a string, or error message if execution fails
+        Query results as a string, or an error message.
     """
-    # Safety check: ensure it's a SELECT query
-    query_upper = sql_query.strip().upper()
-    if not query_upper.startswith("SELECT"):
-        return "ERROR: Only SELECT queries are allowed for security reasons."
 
-    # Check for dangerous keywords
-    dangerous_keywords = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE"]
-    if any(keyword in query_upper for keyword in dangerous_keywords):
-        return "ERROR: Query contains forbidden operations. Only SELECT queries allowed."
+
+    # --------------------------------------
+    # Pre-process / normalize
+    # --------------------------------------
+    original_query = sql_query.strip()
+    query_upper = original_query.upper()
+
+    # --------------------------------------
+    # Safety checks
+    # --------------------------------------
+    if not (
+        query_upper.startswith("SELECT")
+        or query_upper.startswith("INSERT")
+        or query_upper.startswith("UPDATE")
+    ):
+        return "ERROR: Only SELECT, INSERT, and UPDATE queries are allowed."
+
+    # Block dangerous operations (whole-word)
+    forbidden = ["DROP", "DELETE", "ALTER", "CREATE", "TRUNCATE"]
+    pattern = r"\b(" + "|".join(forbidden) + r")\b"
+
+    if re.search(pattern, query_upper):
+        return "ERROR: Query contains forbidden operations."
+
+    # --------------------------------------
+    # Auto-add RETURNING * if missing
+    # --------------------------------------
+    if (query_upper.startswith("INSERT") or query_upper.startswith("UPDATE")) \
+       and "RETURNING" not in query_upper:
+        sql_query = original_query.rstrip(";") + " RETURNING *"
+    else:
+        sql_query = original_query
 
     try:
-        result = db.run(sql_query)
-        if not result or result == "[]":
-            return "Query executed successfully but returned no results."
-        return str(result)
+        async for session in get_db():
+            stmt = text(sql_query)
+            result = await session.execute(stmt)
+
+            # --------------------------------------
+            # Handle SELECT or INSERT/UPDATE that returns rows
+            # --------------------------------------
+            if result.returns_rows:
+                rows = result.mappings().all()
+                await session.commit()
+
+                if not rows:
+                    return "Query executed successfully but returned no rows."
+
+                return str([dict(r) for r in rows])
+
+            # --------------------------------------
+            # Handle INSERT/UPDATE with no result (rare with our modification)
+            # --------------------------------------
+            await session.commit()
+            return "Query executed successfully."
+
     except Exception as e:
         return f"ERROR executing query: {str(e)}"
+
+
 
 
 # ============================================
@@ -482,14 +604,13 @@ def confirm_appointment(appointment_id: str) -> str:
 
 tools = [
     get_database_schema,
+    planner,
     generate_sql_query,
     validate_sql_query,
     execute_sql_query,
     format_query_results,
-
     create_appointment,
     update_appointment,
     cancel_appointment,
-    confirm_appointment,
-
+    confirm_appointment
 ]

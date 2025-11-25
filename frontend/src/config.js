@@ -1,7 +1,7 @@
 // Configuration file for API settings
 export const API_CONFIG = {
   BASE_URL: 'http://localhost:8000/chat', // Change this to your backend URL
-  USER_ID: "148234b1-8960-4397-a318-4522557d79b8", // Replace with actual user ID
+  USER_ID: "13756d91-e043-47a8-abd3-f7aa67801ccb", // Replace with actual user ID
 };
 
 export const API_ENDPOINTS = {

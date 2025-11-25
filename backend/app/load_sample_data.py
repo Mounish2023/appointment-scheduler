@@ -18,7 +18,6 @@ from decimal import Decimal
 import random
 import os
 import sys
-from app.models.dental_appointment_models import ProviderService
 
 
 # Add the project root to the Python path
@@ -27,8 +26,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import your models and database configuration
 from app.models.dental_appointment_models import (
     Base, User, ServiceProvider, Service, Appointment, 
-    AvailabilityRule, RecurringPattern, AppointmentStatus, 
-    RecurringType
+    BaseAvailabilityRule, AvailabilityException, RecurringPattern, AppointmentStatus, 
+    RecurringType, ProviderService
 )
 from app.database import engine, AsyncSessionLocal
 from app.config import settings
@@ -486,15 +485,18 @@ async def load_providers(session):
     return providers
 
 
-async def create_availability_rules(session, providers):
-    """Create availability rules for all providers"""
-    print("\nCreating availability rules...")
-    rules = []
+
+async def create_sample_availability(session, providers):
+    """Create base availability and exceptions for providers"""
+    print("\nCreating base availability and exceptions...")
+
+    base_rules = []
+    exceptions = []
 
     for provider in providers:
-        # Monday to Friday: 9 AM - 5 PM
-        for day in range(1, 6):  # Monday to Friday
-            rule = AvailabilityRule(
+        # Base working hours: Monday to Friday 9:00 - 17:00
+        for day in range(1, 6):  # 1=Monday, 5=Friday
+            rule = BaseAvailabilityRule(
                 provider_id=provider.id,
                 day_of_week=day,
                 start_time=time(9, 0),
@@ -502,31 +504,30 @@ async def create_availability_rules(session, providers):
                 effective_from=date(2024, 1, 1),
                 effective_until=None,
                 timezone="America/Chicago",
-                is_available=True,
                 notes="Regular working hours"
             )
-            rules.append(rule)
+            base_rules.append(rule)
             session.add(rule)
 
-        # Lunch break: 12 PM - 1 PM (blocked time)
+        # Lunch break: 12:00 - 13:00 as exception
         for day in range(1, 6):
-            lunch_break = AvailabilityRule(
-                provider_id=provider.id,
-                day_of_week=day,
-                start_time=time(12, 0),
-                end_time=time(13, 0),
-                effective_from=date(2024, 1, 1),
-                effective_until=None,
-                timezone="America/Chicago",
-                is_available=False,
-                notes="Lunch break"
-            )
-            rules.append(lunch_break)
-            session.add(lunch_break)
+            # For weekly recurring lunch, create exceptions for next 7 days as sample
+            for d in range(0, 7):
+                exception_date = date.today()  # or calculate actual date for day-of-week
+                lunch_exception = AvailabilityException(
+                    provider_id=provider.id,
+                    date=exception_date,
+                    start_time=time(12, 0),
+                    end_time=time(13, 0),
+                    reason="Lunch break"
+                )
+                exceptions.append(lunch_exception)
+                session.add(lunch_exception)
 
     await session.commit()
-    print(f"✓ Created {len(rules)} availability rules")
-    return rules
+    print(f"✓ Created {len(base_rules)} base rules and {len(exceptions)} exceptions")
+    return base_rules, exceptions
+
 
 
 async def create_sample_appointments(session, patients, providers, services):
@@ -657,7 +658,7 @@ async def async_main():
             providers = await load_providers(session)
             provider_services = await load_provider_services(session, providers, services)
 
-            availability_rules = await create_availability_rules(session, providers)
+            availability_rules = await create_sample_availability(session, providers)
             appointments = await create_sample_appointments(session, patients, providers, services)
 
             print("\n" + "=" * 60)

@@ -10,39 +10,35 @@ This agent can:
 
 Built with LangGraph and follows the ReAct pattern with custom tool nodes.
 """
-
-import os
 from typing import Literal, TypedDict, Annotated
 from datetime import datetime
-
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.tools import tool
-from langchain_community.utilities import SQLDatabase
-
-from langgraph.graph import StateGraph, MessagesState, END
+from langchain_core.messages import SystemMessage
+from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.memory import MemorySaver
 from .tools import tools
 from .prompts import SYSTEM_PROMPT
-
+from operator import add
 # ============================================
 # AGENT STATE
 # ============================================
 
+
+
+
+
 class AgentState(TypedDict):
     """State for the dental appointment booking agent"""
-    messages: Annotated[list, "The conversation history"]
-    schema_context: Annotated[str, "Database schema information"]
-    query_result: Annotated[str, "SQL query execution result"]
-    current_step: Annotated[str, "Current step in the workflow"]
+    user_context: Annotated[str, "User context information"]
+    messages: Annotated[list, add]
+
 
 
 # ============================================
 # AGENT NODES
 # ============================================
 
-def should_continue(state: MessagesState) -> Literal["tools", "end"]:
+def should_continue(state: AgentState) -> Literal["tools", "end"]:
     """Determine if the agent should continue or end."""
     messages = state["messages"]
     last_message = messages[-1]
@@ -55,14 +51,15 @@ def should_continue(state: MessagesState) -> Literal["tools", "end"]:
     return "end"
 
 
-def call_model(state: MessagesState):
+def call_model(state: AgentState):
     """Call the LLM with the current state."""
     messages = state["messages"]
     
     # Add system prompt with current datetime
     system_message = SystemMessage(
         content=SYSTEM_PROMPT.format(
-            current_datetime=datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
+            current_datetime=datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"),
+            user_context=state["user_context"]
         )
     )
 
@@ -84,7 +81,7 @@ async def create_dental_appointment_agent():
     """Create the LangGraph agent for dental appointment booking."""
 
     # Initialize the graph
-    workflow = StateGraph(MessagesState)
+    workflow = StateGraph(AgentState)
 
     # Add nodes
     workflow.add_node("agent", call_model)

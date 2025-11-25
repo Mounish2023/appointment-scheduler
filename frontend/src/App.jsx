@@ -15,16 +15,16 @@ function App() {
   // Function to convert markdown-style formatting to HTML
   const formatMessageContent = (content) => {
     if (!content) return '';
-    
+
     // Convert **text** to <strong>text</strong>
     let formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    
+
     // Convert *text* to <em>text</em>
     formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    
+
     // Convert line breaks to <br>
     formatted = formatted.replace(/\n/g, '<br>');
-    
+
     return formatted;
   };
 
@@ -38,13 +38,14 @@ function App() {
     setIsLoadingSessions(true);
     try {
       const response = await fetch(API_ENDPOINTS.GET_ALL_SESSIONS(API_CONFIG.USER_ID));
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const sessions = await response.json();
-      
+      console.log('Loaded sessions:', sessions);
+
       // Transform sessions into the format we need
       const transformedSessions = sessions.map(session => ({
         id: session.sessionid,
@@ -53,10 +54,11 @@ function App() {
         created_at: session.created_at
       }));
 
+      console.log('Transformed sessions:', transformedSessions);
       setConversations(transformedSessions);
     } catch (error) {
       console.error('Error loading sessions:', error);
-      // Don't alert on initial load, just log the error
+      alert(`Failed to load sessions: ${error.message}`);
     } finally {
       setIsLoadingSessions(false);
     }
@@ -69,13 +71,13 @@ function App() {
       const response = await fetch(
         API_ENDPOINTS.GET_SESSION_MESSAGES(API_CONFIG.USER_ID, sessionId)
       );
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const messages = await response.json();
-      
+
       // Transform messages into our format
       const transformedMessages = messages.flatMap(msg => [
         {
@@ -155,7 +157,7 @@ function App() {
     const currentChat = getCurrentChat();
     const isNewChat = currentChat.messages.length === 0; // Simplified: new if no messages (covers null ID)
     const originalInput = input;
-    
+
     // Add user message to the chat
     const userMessage = {
       id: `user-${Date.now()}`,
@@ -163,10 +165,10 @@ function App() {
       content: query,
       timestamp: new Date().toISOString()
     };
-    
+
     // Create a temporary ID for new chats
     const tempId = isNewChat ? `temp-${Date.now()}` : currentChatId;
-    
+
     // Update the chat with the user's message (local only for now)
     const updatedChat = {
       ...currentChat,
@@ -174,7 +176,7 @@ function App() {
       messages: [...currentChat.messages, userMessage],
       title: isNewChat ? (query.substring(0, 30) + (query.length > 30 ? '...' : '')) : currentChat.title
     };
-    
+
     // Update conversations immediately (for optimism)
     setConversations(prev => {
       if (isNewChat) {
@@ -185,7 +187,7 @@ function App() {
         return prev.map(chat => chat.id === currentChatId ? updatedChat : chat);
       }
     });
-    
+
     // If this is a new chat, update the current chat ID
     if (isNewChat) {
       setCurrentChatId(tempId);
@@ -195,7 +197,7 @@ function App() {
     try {
       // Call the appropriate API endpoint based on whether it's a new chat or not
       const response = await fetch(
-        isNewChat 
+        isNewChat
           ? API_ENDPOINTS.START_SESSION(API_CONFIG.USER_ID)
           : API_ENDPOINTS.SEND_MESSAGE(API_CONFIG.USER_ID, currentChatId),
         {
@@ -215,7 +217,7 @@ function App() {
       }
 
       const responseData = await response.json();
-      
+
       // Add assistant's response to the chat
       const assistantMessage = {
         id: `assistant-${Date.now()}`,
@@ -223,20 +225,20 @@ function App() {
         content: isNewChat ? responseData.conversations[0].response : responseData.response,
         timestamp: new Date().toISOString()
       };
-      
+
       // Update the chat with the assistant's response
       const finalChat = {
         ...(isNewChat ? { ...updatedChat, id: responseData.sessionid } : updatedChat),
         messages: [...updatedChat.messages, assistantMessage]
       };
-      
+
       // Update conversations with the final chat state
-      setConversations(prev => 
-        isNewChat 
+      setConversations(prev =>
+        isNewChat
           ? [finalChat, ...prev.filter(chat => chat.id !== tempId)]
           : prev.map(chat => chat.id === currentChatId ? finalChat : chat)
       );
-      
+
       // Update currentChatId if this was a new chat
       if (isNewChat) {
         setCurrentChatId(responseData.sessionid);
@@ -265,7 +267,7 @@ function App() {
 
     setCurrentChatId(chatId);
     setInput(drafts[chatId] || '');
-    
+
     // Load messages for this session if not already loaded
     const chat = conversations.find(c => c.id === chatId);
     if (chat && chat.messages.length === 0) {
@@ -285,9 +287,9 @@ function App() {
   return (
     <div className="app-container">
       <div className="sidebar">
-        <button 
-          className="new-chat-btn" 
-          onClick={handleSelectNew} 
+        <button
+          className="new-chat-btn"
+          onClick={handleSelectNew}
           disabled={isLoading}
           title={!input.trim() ? "Type a message first" : "Start a new chat"}
         >
@@ -339,12 +341,12 @@ function App() {
             >
               <div className={`message ${message.role}`}>
                 {message.role === 'assistant' ? (
-                  <div 
+                  <div
                     className="message-html-content"
                     dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
                   />
                 ) : (
-                  <div 
+                  <div
                     className="message-html-content"
                     dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
                   />

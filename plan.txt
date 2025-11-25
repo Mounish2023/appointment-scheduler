@@ -8,3 +8,8 @@ sample data is not the real data. sample data is meant to understand the schema 
 3. what services are provided by whom?
 
 learn how to do database migrations, schema changes, 
+
+
+1. provided user information for better user context.
+2. 
+
