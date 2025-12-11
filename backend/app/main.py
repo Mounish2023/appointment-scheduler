@@ -9,21 +9,22 @@ import os
 from .config import settings
 from .database import create_tables
 from .create_collections import create_conversations_collection
-from .routes import chat_routes
+from .routes import chat_routes, auth_routes
 from .utils.logger import logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting up Aspen Dental AI Assistant...")
-    await create_tables()
+    logger.info("Starting up Assist...")
+    # await create_tables()
     create_conversations_collection()  # This is now a synchronous call
-    logger.info("Database initialization completed")
+    # logger.info("Database initialization completed")
     os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
     os.environ["LANGSMITH_PROJECT_NAME"] = settings.LANGSMITH_PROJECT_NAME
     os.environ["LANGSMITH_TRACING"] = settings.LANGSMITH_TRACING
     os.environ["LANGSMITH_ENDPOINT"] =settings.LANGSMITH_ENDPOINT
     os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
+    os.environ["GOOGLE_API_KEY"] = settings.GOOGLE_API_KEY
 
     yield
     # Shutdown
@@ -31,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="AI-powered appointment scheduling assistant for Aspen Dental",
+    description="AI-powered assistant",
     version=settings.VERSION,
     lifespan=lifespan
 )
@@ -47,18 +48,19 @@ app.add_middleware(
 
 # Include routers
 app.include_router(chat_routes.router, prefix="/chat", tags=["chat"])
+app.include_router(auth_routes.router, tags=["auth"])
 
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to Aspen Dental AI Assistant API",
+        "message": "Welcome to Assist",
         "version": settings.VERSION,
         "status": "healthy"
     }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "aspen-dental-ai-assistant"}
+    return {"status": "healthy", "service": "Assist"}
 
 # Admin endpoint to reload sample data (for testing)
 @app.post("/admin/reload-sample-data")

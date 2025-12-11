@@ -1,7 +1,7 @@
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
-
+from langchain_google_genai import ChatGoogleGenerativeAI
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 # from app.config import settings
@@ -87,7 +87,8 @@ def planner(question: str) -> str:
     Returns:
         A structured, numbered plan with clear steps to address the request
     """
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    # llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-3-pro-preview", temperature=0)
     
     # Build schema context from the imported table_schemas
     schema_context = ""
@@ -105,7 +106,7 @@ def planner(question: str) -> str:
     prompt = f"""You are a dental appointment scheduling expert. Break down the following
     complex request into clear, sequential steps.
     
-    You have access to the following database schema:
+    You have access to the following POSTGRES database schema:
     {schema_context}
     
     Request: {question}
@@ -115,10 +116,9 @@ def planner(question: str) -> str:
     1. Specific and actionable
     2. Include any necessary context or data requirements
     3. Note any dependencies between steps
-    4. Consider appointment booking workflows and constraints
+    4. Consider appointment booking workflows and constraints, as well as PostgreSQL-specific capabilities if relevant for data handling or querying.
     
     If the request is simple and doesn't require planning, say so. The steps cannot be more than 3."""
-    
     response = llm.invoke([HumanMessage(content=prompt)])
     return response.content.strip()
 
@@ -135,7 +135,8 @@ def generate_sql_query(natural_language_question: str, schema_context: str) -> s
     Returns:
         A SQL query string
     """
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    # llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-3-pro-preview", temperature=0)
 
     prompt = f"""You are a SQL expert for a dental appointment booking system.
 
@@ -145,6 +146,7 @@ def generate_sql_query(natural_language_question: str, schema_context: str) -> s
                 User Question: {natural_language_question}
 
                 Important Guidelines:
+                - The database is PostgreSQL. Use PostgreSQL-specific syntax and functions where appropriate.
                 - Generate ONLY SELECT , UPDATE, INSERT queries (no DELETE, DROP, ALTER, CREATE, TRUNCATE)
                 - Always use proper JOIN syntax when multiple tables are needed
                 - Include relevant WHERE clauses to filter results
@@ -176,7 +178,8 @@ def validate_sql_query(sql_query: str) -> str:
     Returns:
         Either "VALID" or an error message with corrections needed
     """
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    # llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatGoogleGenerativeAI(model="gemini-3-pro-preview", temperature=0)
 
     prompt = f"""You are a SQL expert reviewing this query for correctness and safety.
 
@@ -189,6 +192,7 @@ def validate_sql_query(sql_query: str) -> str:
                 3. Logic: Verify JOINs are correct, proper WHERE clauses
                 4. Data types: Check for type mismatches
                 5. Best practices: Proper use of LIMIT, correct column names
+                6. PostgreSQL compatibility: Ensure the query uses PostgreSQL-specific syntax and functions where appropriate.
 
                 If the query is valid, respond with only: VALID
 
@@ -210,7 +214,8 @@ def format_query_results(query_result: str, original_question: str) -> str:
     Returns:
         A natural language answer to the user's question
     """
-    llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
+    # llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
+    llm = ChatGoogleGenerativeAI(model="gemini-3-pro-preview", temperature=0.3)
 
     prompt = f"""You are a helpful dental office assistant. Convert the database query results 
     into a clear, natural language response.
@@ -608,9 +613,6 @@ tools = [
     generate_sql_query,
     validate_sql_query,
     execute_sql_query,
-    format_query_results,
-    create_appointment,
-    update_appointment,
-    cancel_appointment,
-    confirm_appointment
+    format_query_results
 ]
+tools_by_name = {tool.name: tool for tool in tools}

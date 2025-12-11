@@ -11,7 +11,9 @@ from pydantic import BaseModel
 from uuid import UUID
 from ..database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Annotated
+from .auth_routes import get_current_active_user
+from ..schemas import User
 
 router = APIRouter()
 conversation_manager = ConversationManager()
@@ -49,16 +51,32 @@ class SessionResponse(BaseModel):
 
 
 @router.post("/session/start", response_model=SessionResponse)
-async def start_chat_session(userid: UUID, session_details: SessionCreate, db: AsyncSession = Depends(get_db)):
+async def start_chat_session(
+    session_details: SessionCreate,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db)
+):
     """Start a new chat session and send initial greeting."""
     try:
+        userid = current_user.userid
+        print(userid)
         # Generate a unique thread ID for this conversation
         sessionid = str(uuid.uuid4())
 
-                # Get user data
-        user_dict = await user_manager.get_user_by_id(db, str(userid))
+        # Get user data - using current_user directly might be enough if it has all info, 
+        # but let's keep user_manager if it fetches more details.
+        # Actually user_manager.get_user_by_id might expect string.
+        # current_user is likely a Pydantic model from auth_routes.
+        
+        # We can use current_user directly if it has what we need. 
+        # For now, let's assume we need to fetch 'user_dict' for the agent context.
+        # If current_user is the Pydantic model User, we can dump it.
+        
+        user_dict = current_user.model_dump()
+        # user_dict = await user_manager.get_user_by_id(db, str(userid)) 
+        
         if not user_dict:
-            raise HTTPException(
+             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
@@ -95,18 +113,20 @@ async def start_chat_session(userid: UUID, session_details: SessionCreate, db: A
 async def send_message(
     session_id: UUID,
     message_data: MessageCreate,
-    userid: UUID,
+    current_user: Annotated[User, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db)
 ):
     """Send a message and trigger AI agent processing."""
     try:
+        userid = current_user.userid
         # Get session details
         session_details = await conversation_manager.get_session_conversations(
             userid=str(userid), sessionid=str(session_id)
         )
         
         # Get user data
-        user_dict = await user_manager.get_user_by_id(db, str(userid))
+        user_dict = current_user.model_dump()
+        
         if not user_dict:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -151,11 +171,14 @@ async def send_message(
 
 
 @router.get("/sessions", response_model=List[SessionResponse])
-async def get_all_sessions(userid: UUID):
+async def get_all_sessions(
+    current_user: Annotated[User, Depends(get_current_active_user)]
+):
     """
     Get all chat sessions for the specified user.
     """
     try:
+        userid = current_user.userid
         sessions = await conversation_manager.get_all_sessions(userid=str(userid))
         return sessions
     except Exception as e:
@@ -166,11 +189,15 @@ async def get_all_sessions(userid: UUID):
 
 
 @router.get("/sessions/{session_id}/messages", response_model=List[MessageResponse])
-async def get_session_messages(session_id: UUID, userid: UUID):
+async def get_session_messages(
+    session_id: UUID, 
+    current_user: Annotated[User, Depends(get_current_active_user)]
+):
     """
     Get all messages for a specific session.
     """
     try:
+        userid = current_user.userid
         messages = await conversation_manager.get_session_conversations(
             userid=str(userid), sessionid=str(session_id)
         )

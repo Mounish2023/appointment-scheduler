@@ -502,7 +502,7 @@ table_schemas = {
                 "description": "Current appointment status.",
                 "use_cases": ["Used to track the lifecycle (e.g., scheduled, completed, cancelled)."],
                 "cardinality": "low",
-                "unique_values": ["scheduled", "confirmed", "cancelled", "completed", "no_show"],
+                "unique_values": ["SCHEDULED", "CONFIRMED", "CANCELLED", "COMPLETED", "NO_SHOW"],
                 "is_primary_key": False,
                 "is_foreign_key": False
             },

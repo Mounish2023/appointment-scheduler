@@ -1,64 +1,73 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './App.css';
-import { API_CONFIG, API_ENDPOINTS } from './config';
+import { API_CONFIG } from './config';
+import * as api from './services/api';
+import { AuthProvider, useAuth } from './features/auth/AuthContext';
+import Login from './features/auth/Login';
+import Register from './features/auth/Register';
 
-function App() {
+// Protected Route Component
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
+// Chat Interface Component (The original App logic)
+function ChatInterface() {
   const [conversations, setConversations] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [drafts, setDrafts] = useState({}); // New: Store unsent input drafts per chat (including 'new' for new mode)
+  const [drafts, setDrafts] = useState({});
   const messagesEndRef = useRef(null);
+  const { user, logout } = useAuth(); // Get user info from context
 
   // Function to convert markdown-style formatting to HTML
   const formatMessageContent = (content) => {
     if (!content) return '';
-
-    // Convert **text** to <strong>text</strong>
     let formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-    // Convert *text* to <em>text</em>
     formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-    // Convert line breaks to <br>
     formatted = formatted.replace(/\n/g, '<br>');
-
     return formatted;
   };
 
   // Load all sessions on component mount
   useEffect(() => {
-    loadAllSessions();
-  }, []);
+    if (user) {
+      loadAllSessions();
+    }
+  }, [user]);
 
   // Load all sessions in the chat interface
   const loadAllSessions = async () => {
     setIsLoadingSessions(true);
     try {
-      const response = await fetch(API_ENDPOINTS.GET_ALL_SESSIONS(API_CONFIG.USER_ID));
+      // API call now uses token, userId param is effectively ignored by backend but kept for compatibility if needed
+      const sessions = await api.getSessions(user?.userid || 'current');
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const sessions = await response.json();
       console.log('Loaded sessions:', sessions);
 
-      // Transform sessions into the format we need
       const transformedSessions = sessions.map(session => ({
         id: session.sessionid,
         title: session.title || `Chat ${session.sessionid.substring(0, 8)}...`,
-        messages: [], // Messages will be loaded when user clicks on the session
+        messages: [],
         created_at: session.created_at
       }));
 
-      console.log('Transformed sessions:', transformedSessions);
       setConversations(transformedSessions);
     } catch (error) {
       console.error('Error loading sessions:', error);
-      alert(`Failed to load sessions: ${error.message}`);
+      // alert(`Failed to load sessions: ${error.message}`); 
+      // silent fail or specific UI error state better
     } finally {
       setIsLoadingSessions(false);
     }
@@ -68,17 +77,8 @@ function App() {
   const loadSessionMessages = async (sessionId) => {
     setIsLoadingMessages(true);
     try {
-      const response = await fetch(
-        API_ENDPOINTS.GET_SESSION_MESSAGES(API_CONFIG.USER_ID, sessionId)
-      );
+      const messages = await api.getSessionMessages(user?.userid || 'current', sessionId);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const messages = await response.json();
-
-      // Transform messages into our format
       const transformedMessages = messages.flatMap(msg => [
         {
           id: `${msg.conversationid}-user`,
@@ -94,7 +94,6 @@ function App() {
         }
       ]);
 
-      // Update the conversation with loaded messages
       setConversations(prevConvos =>
         prevConvos.map(chat =>
           chat.id === sessionId
@@ -110,7 +109,6 @@ function App() {
     }
   };
 
-  // Scroll to the bottom of the chat window
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -119,7 +117,6 @@ function App() {
     scrollToBottom();
   }, [conversations, currentChatId]);
 
-  // Get the current chat (handle null as new chat mode)
   const getCurrentChat = () => {
     if (currentChatId === null) {
       return {
@@ -131,21 +128,13 @@ function App() {
     return conversations.find(chat => chat.id === currentChatId);
   };
 
-  // Handle selecting "new chat" mode (renamed from handleNewChat)
   const handleSelectNew = () => {
-    if (currentChatId === null) {
-      return; // Already in new mode; do nothing to "remain same"
-    }
-
-    // Save draft of current chat
+    if (currentChatId === null) return;
     setDrafts(prev => ({ ...prev, [currentChatId]: input }));
-
-    // Switch to new mode
     setCurrentChatId(null);
     setInput(drafts['new'] || '');
   };
 
-  // Handle sending a message
   const handleSendMessage = async () => {
     const query = input.trim();
     if (!query) {
@@ -155,10 +144,9 @@ function App() {
 
     setIsLoading(true);
     const currentChat = getCurrentChat();
-    const isNewChat = currentChat.messages.length === 0; // Simplified: new if no messages (covers null ID)
+    const isNewChat = currentChat.messages.length === 0;
     const originalInput = input;
 
-    // Add user message to the chat
     const userMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -166,10 +154,8 @@ function App() {
       timestamp: new Date().toISOString()
     };
 
-    // Create a temporary ID for new chats
     const tempId = isNewChat ? `temp-${Date.now()}` : currentChatId;
 
-    // Update the chat with the user's message (local only for now)
     const updatedChat = {
       ...currentChat,
       id: tempId,
@@ -177,48 +163,27 @@ function App() {
       title: isNewChat ? (query.substring(0, 30) + (query.length > 30 ? '...' : '')) : currentChat.title
     };
 
-    // Update conversations immediately (for optimism)
     setConversations(prev => {
       if (isNewChat) {
-        // For new chats, add to the beginning of the list
         return [updatedChat, ...prev];
       } else {
-        // For existing chats, update in place
         return prev.map(chat => chat.id === currentChatId ? updatedChat : chat);
       }
     });
 
-    // If this is a new chat, update the current chat ID
     if (isNewChat) {
       setCurrentChatId(tempId);
     }
     setInput('');
 
     try {
-      // Call the appropriate API endpoint based on whether it's a new chat or not
-      const response = await fetch(
-        isNewChat
-          ? API_ENDPOINTS.START_SESSION(API_CONFIG.USER_ID)
-          : API_ENDPOINTS.SEND_MESSAGE(API_CONFIG.USER_ID, currentChatId),
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: query,
-            ...(isNewChat ? {} : { sessionid: currentChatId })
-          })
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      let responseData;
+      if (isNewChat) {
+        responseData = await api.startSession(user?.userid || 'current', query);
+      } else {
+        responseData = await api.sendMessage(currentChatId, user?.userid || 'current', query);
       }
 
-      const responseData = await response.json();
-
-      // Add assistant's response to the chat
       const assistantMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -226,25 +191,21 @@ function App() {
         timestamp: new Date().toISOString()
       };
 
-      // Update the chat with the assistant's response
       const finalChat = {
         ...(isNewChat ? { ...updatedChat, id: responseData.sessionid } : updatedChat),
         messages: [...updatedChat.messages, assistantMessage]
       };
 
-      // Update conversations with the final chat state
       setConversations(prev =>
         isNewChat
           ? [finalChat, ...prev.filter(chat => chat.id !== tempId)]
           : prev.map(chat => chat.id === currentChatId ? finalChat : chat)
       );
 
-      // Update currentChatId if this was a new chat
       if (isNewChat) {
         setCurrentChatId(responseData.sessionid);
       }
 
-      // Clear draft after successful send
       setDrafts(prev => {
         const newDrafts = { ...prev };
         delete newDrafts[isNewChat ? 'new' : currentChatId];
@@ -252,23 +213,20 @@ function App() {
       });
     } catch (error) {
       console.error('Error sending message:', error);
-      alert(`Failed to send message: ${error.message}`);
-      setInput(originalInput); // Restore input on error
+      alert(`Failed to send message: ${error.message}`); // Could be 401 if token expired
+      setInput(originalInput);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle switching to an existing chat
   const handleSwitchChat = async (chatId) => {
-    // Save draft of previous (handle 'new' if current is null)
     const prevId = currentChatId || 'new';
     setDrafts(prev => ({ ...prev, [prevId]: input }));
 
     setCurrentChatId(chatId);
     setInput(drafts[chatId] || '');
 
-    // Load messages for this session if not already loaded
     const chat = conversations.find(c => c.id === chatId);
     if (chat && chat.messages.length === 0) {
       await loadSessionMessages(chatId);
@@ -287,14 +245,21 @@ function App() {
   return (
     <div className="app-container">
       <div className="sidebar">
-        <button
-          className="new-chat-btn"
-          onClick={handleSelectNew}
-          disabled={isLoading}
-          title={!input.trim() ? "Type a message first" : "Start a new chat"}
-        >
-          + New Chat
-        </button>
+        <div style={{ padding: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            className="new-chat-btn"
+            onClick={handleSelectNew}
+            disabled={isLoading}
+            title={!input.trim() ? "Type a message first" : "Start a new chat"}
+            style={{ flex: 1, marginRight: '10px' }}
+          >
+            + New Chat
+          </button>
+          <button onClick={logout} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
+            Logout
+          </button>
+        </div>
+
         <div className="chat-list">
           {isLoadingSessions ? (
             <div className="loading-sessions">
@@ -321,6 +286,9 @@ function App() {
       <div className="main-content">
         <div className="chat-header">
           <h1>Appointment Scheduler</h1>
+          <div className="user-info" style={{ fontSize: '0.9rem', color: '#666' }}>
+            {user?.email}
+          </div>
         </div>
 
         <div className="chat-window">
@@ -340,17 +308,10 @@ function App() {
               className={`message-container ${message.role}`}
             >
               <div className={`message ${message.role}`}>
-                {message.role === 'assistant' ? (
-                  <div
-                    className="message-html-content"
-                    dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
-                  />
-                ) : (
-                  <div
-                    className="message-html-content"
-                    dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
-                  />
-                )}
+                <div
+                  className="message-html-content"
+                  dangerouslySetInnerHTML={{ __html: formatMessageContent(message.content) }}
+                />
               </div>
             </div>
           ))}
@@ -384,6 +345,27 @@ function App() {
         </div>
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <ChatInterface />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

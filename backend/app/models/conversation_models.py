@@ -20,3 +20,13 @@ class Session(BaseModel):
     class Config:
         from_attributes = True
 
+# class User(BaseModel):
+#     userid: str
+#     name: str
+#     email: str
+#     password: str
+#     created_at: datetime
+#     updated_at: datetime
+
+#     class Config:
+#         from_attributes = True

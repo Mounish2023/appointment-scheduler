@@ -21,22 +21,25 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = "gpt-4o"
     OPENAI_TEMPERATURE: float = 0.1
+
+    GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+
     load_sample_data: bool = os.getenv("LOAD_SAMPLE_DATA", True)
 
-    # Email Configuration
-    EMAIL_HOST: Optional[str] = None
-    EMAIL_PORT: Optional[str] = None
-    EMAIL_USERNAME: Optional[str] = None
-    EMAIL_PASSWORD: Optional[str] = None
-    EMAIL_FROM_ADDRESS: Optional[str] = None
-    EMAIL_USE_TLS: bool = True
-    EMAIL_USE_SSL: bool = False
+    # # Email Configuration
+    # EMAIL_HOST: Optional[str] = None
+    # EMAIL_PORT: Optional[str] = None
+    # EMAIL_USERNAME: Optional[str] = None
+    # EMAIL_PASSWORD: Optional[str] = None
+    # EMAIL_FROM_ADDRESS: Optional[str] = None
+    # EMAIL_USE_TLS: bool = True
+    # EMAIL_USE_SSL: bool = False
 
     # Sentry
-    SENTRY_DSN: Optional[str] = None
+    # SENTRY_DSN: Optional[str] = None
 
     # App
-    APP_NAME: str = "Aspen Dental AI Assistant"
+    APP_NAME: str = "Assist"
     DEBUG: bool = True
     VERSION: str = "1.0.0"
 
