@@ -40,13 +40,13 @@ export async function login(email, password) {
 }
 
 // Chat endpoints
-export async function startSession(userId, query) {
+export async function startSession(userId, query, documentIds = []) {
   // note: userId param might be deprecated in backend but keeping signature if needed, 
   // though backend now uses token. We'll rely on token.
   const res = await fetch(`${API_URL}/chat/session/start`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ query })
+    body: JSON.stringify({ query, document_ids: documentIds })
   });
   return await handleResponse(res);
 }
@@ -69,6 +69,37 @@ export async function getSessions(userId) {
 
 export async function getSessionMessages(userId, sessionId) {
   const res = await fetch(`${API_URL}/chat/sessions/${sessionId}/messages`, {
+    headers: getAuthHeaders()
+  });
+  return await handleResponse(res);
+}
+
+// Document API
+export async function uploadDocument(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const token = localStorage.getItem('token');
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+  const res = await fetch(`${API_URL}/documents/upload`, {
+    method: 'POST',
+    headers: headers,
+    body: formData
+  });
+  return await handleResponse(res);
+}
+
+
+export async function getDocuments() {
+  const res = await fetch(`${API_URL}/documents/`, {
+    headers: getAuthHeaders()
+  });
+  return await handleResponse(res);
+}
+
+export async function getDownloadUrl(documentId) {
+  const res = await fetch(`${API_URL}/documents/${documentId}/download`, {
     headers: getAuthHeaders()
   });
   return await handleResponse(res);

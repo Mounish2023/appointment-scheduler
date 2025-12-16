@@ -43,7 +43,7 @@ class ConversationManager:
         return conversation
 
     async def add_session_conversation(
-        self, userid: str, sessionid: str, query: str, response: str
+        self, userid: str, sessionid: str, query: str, response: str, document_ids: List[str] = []
     ) -> Session:
         """
         Create a new session document with its first conversation.
@@ -64,6 +64,7 @@ class ConversationManager:
             userid=userid,
             conversations=[conversation],
             title=title,
+            document_ids=document_ids,
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
@@ -112,6 +113,7 @@ class ConversationManager:
                 userid=result["userid"],
                 conversations=conversations,
                 title=result.get("title"),  # Backwards compatible with existing sessions
+                document_ids=result.get("document_ids", []),
                 created_at=result.get("created_at", datetime.now()),
                 updated_at=result.get("updated_at", datetime.now()),
             )

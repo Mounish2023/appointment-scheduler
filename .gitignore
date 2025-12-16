@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+gen-lang-client-0323926280-da7a40e1c1f6.json
+sample.html
+sample.ipynb
+test_planner.py
+
+ULTIMAAX.extraction.json

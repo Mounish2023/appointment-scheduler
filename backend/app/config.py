@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = 0.1
 
     GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+    GCS_BUCKET_NAME: str = os.getenv("GCS_BUCKET_NAME", "")
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
+    VISION_AGENT_API_KEY: str = os.getenv("VISION_AGENT_API_KEY", "")
+    
+    # Cohere Configuration
+    # COHERE_EMBEDDING_MODEL: str = "large"
+    # COHERE_ENDPOINT: str = "https://api.cohere.com/v2/embeddings"
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+
+    # Azure Search Configuration
+    AZURE_SEARCH_ENDPOINT: str = os.getenv("AZURE_SEARCH_ENDPOINT", "")
+    AZURE_SEARCH_API_KEY: str = os.getenv("AZURE_SEARCH_API_KEY", "")
+    AZURE_SEARCH_INDEX_NAME: str = os.getenv("AZURE_SEARCH_INDEX_NAME", "")
 
     load_sample_data: bool = os.getenv("LOAD_SAMPLE_DATA", True)
 

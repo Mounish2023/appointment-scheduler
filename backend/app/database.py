@@ -2,6 +2,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from .config import settings
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
+import os
+from pathlib import Path
+
+from landingai_ade import LandingAIADE
 
 # Import Base from models.base
 from .models.base import Base
@@ -51,3 +55,10 @@ class MongoDBClient:
     
     def get_collection(self, db_name="conversations_db", collection_name="conversations"):
         return self._client[db_name][collection_name]
+
+
+# Use with the SDK
+document_extractor_client = LandingAIADE(
+  # Put your API key in the environment variable VISION_AGENT_API_KEY
+  apikey=settings.VISION_AGENT_API_KEY,
+)

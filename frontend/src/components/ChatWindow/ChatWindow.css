@@ -1,0 +1,106 @@
+.chat-window {
+    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
+    background: #f5f7fb;
+}
+
+/* Loading */
+.loading-container {
+    text-align: center;
+    color: #555;
+    padding: 20px 0;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    color: #777;
+    margin-top: 10%;
+    font-size: 1rem;
+}
+
+.document-selection {
+    margin-top: 20px;
+    text-align: left;
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.document-selection p {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.doc-bubbles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.doc-tag {
+    padding: 7px 12px;
+    border-radius: 20px;
+    border: 1px solid #ddd;
+    background: #f9f9f9;
+    color: #333;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+}
+
+.doc-tag .doc-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.doc-tag.selected {
+    border-color: #4a80f0;
+    background: #e7f0ff;
+    color: #4a80f0;
+}
+
+.doc-tag .checkmark {
+    font-size: 0.85rem;
+}
+
+/* Messages */
+.message-container {
+    margin: 10px 0;
+    display: flex;
+}
+
+.message {
+    padding: 11px 15px;
+    border-radius: 12px;
+    max-width: 70%;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.message.user {
+    margin-left: auto;
+    background: linear-gradient(135deg, #4a80f0, #5a9bff);
+    color: #fff;
+}
+
+.message.assistant {
+    margin-right: auto;
+    background: #ffffff;
+    border: 1px solid #e2e2e2;
+}
+
+.message.assistant.loading {
+    font-style: italic;
+}
+
+.message-html-content {
+    word-wrap: break-word;
+}

@@ -9,7 +9,7 @@ import os
 from .config import settings
 from .database import create_tables
 from .create_collections import create_conversations_collection
-from .routes import chat_routes, auth_routes
+from .routes import chat_routes, auth_routes, document_routes
 from .utils.logger import logger
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ app.add_middleware(
 # Include routers
 app.include_router(chat_routes.router, prefix="/chat", tags=["chat"])
 app.include_router(auth_routes.router, tags=["auth"])
+app.include_router(document_routes.router, prefix="/documents", tags=["documents"])
 
 @app.get("/")
 async def root():

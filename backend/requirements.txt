@@ -14,6 +14,8 @@ langchain-core
 langchain-community
 openai
 langchain-google-genai
+google-cloud-storage
+
 
 # Additional dependencies for SQL and data processing
 pandas
@@ -23,3 +25,11 @@ motor
 
 pyjwt
 pwdlib[argon2]
+landingai-ade
+cohere
+pymupdf
+pyvespa
+vespacli
+langchain-cohere
+azure-search-documents
+azure-core
