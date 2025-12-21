@@ -1,1 +1,1 @@
-# appointment-scheduler
+# Enterprise AI Assistant
